@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Taxímetro GPS</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #13131a;
+            --surface2: #1c1c27;
+            --border: #2a2a3a;
+            --accent: #f5c518;
+            --accent2: #ff6b35;
+            --green: #00d68f;
+            --red: #ff4757;
+            --text: #e8e8f0;
+            --muted: #6b6b85;
+            --radius: 16px;
+        }
+ 
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+ 
+        body {
+            font-family: 'Syne', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+ 
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+ 
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+ 
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+ 
+        .logo-text {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+ 
+        .logo-text span { color: var(--accent); }
+ 
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+            transition: all 0.3s;
+        }
+ 
+        .status-pill.gps-ok { color: var(--green); border-color: var(--green); background: rgba(0,214,143,0.08); }
+        .status-pill.gps-err { color: var(--red); border-color: var(--red); background: rgba(255,71,87,0.08); }
+ 
+        .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 1.5s infinite;
+        }
+ 
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+ 
+        .tabs-nav {
+            display: flex;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+ 
+        .tab-nav-btn {
+            flex: 1;
+            padding: 14px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-family: 'Syne', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.25s;
+            letter-spacing: 0.3px;
+        }
+ 
+        .tab-nav-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: rgba(245,197,24,0.04);
+        }
+ 
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
+ 
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+ 
+        #map {
+            width: 100%;
+            height: 280px;
+            background: var(--surface);
+        }
+ 
+        .route-panel {
+            padding: 16px;
+        }
+ 
+        .search-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+ 
+        .search-row {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+ 
+        .search-row:last-child { border-bottom: none; }
+ 
+        .search-icon {
+            font-size: 14px;
+            width: 20px;
+            flex-shrink: 0;
+            text-align: center;
+        }
+ 
+        .search-input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'Syne', sans-serif;
+            font-size: 14px;
+            padding: 14px 0;
+            font-weight: 500;
+        }
+ 
+        .search-input::placeholder { color: var(--muted); }
+ 
+        .origin-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--green);
+            font-family: 'DM Mono', monospace;
+        }
+ 
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0; right: 0;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            z-index: 2000;
+            max-height: 220px;
+            overflow-y: auto;
+            display: none;
+        }
+ 
+        .autocomplete-list.show { display: block; }
+ 
+        .autocomplete-item {
+            padding: 12px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+            line-height: 1.4;
+        }
+ 
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover, .autocomplete-item.selected {
+            background: rgba(245,197,24,0.08);
+            color: var(--accent);
+        }
+ 
+        .autocomplete-item .place-main { font-weight: 600; font-size: 13px; }
+        .autocomplete-item .place-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+ 
+        .route-info {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 14px;
+            animation: fadeUp 0.3s ease;
+        }
+ 
+        .route-info.show { display: block; }
+ 
+        .route-info-header {
+            padding: 12px 16px;
+            background: rgba(245,197,24,0.06);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+ 
+        .route-info-header span:first-child {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--accent);
+            font-family: 'DM Mono', monospace;
+        }
+ 
+        .route-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            padding: 4px 0;
+        }
+ 
+        .route-metric {
+            padding: 14px 16px;
+            text-align: center;
+            border-right: 1px solid var(--border);
+        }
+ 
+        .route-metric:last-child { border-right: none; }
+ 
+        .route-metric-val {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text);
+            letter-spacing: -0.5px;
+        }
+ 
+        .route-metric-val.price { color: var(--accent); font-size: 22px; }
+ 
+        .route-metric-label {
+            font-size: 10px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+ 
+        .tarifa-config {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+ 
+        .tarifa-config-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 12px;
+        }
+ 
+        .tarifa-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+ 
+        .tarifa-field label {
+            display: block;
+            font-size: 10px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+ 
+        .tarifa-field-inner {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+            gap: 4px;
+        }
+ 
+        .tarifa-field-inner span {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+        }
+ 
+        .tarifa-field-inner input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            font-weight: 500;
+            width: 100%;
+            min-width: 0;
+        }
+ 
+        .btn-calcular {
+            width: 100%;
+            padding: 16px;
+            background: var(--accent);
+            color: #0a0a0f;
+            border: none;
+            border-radius: var(--radius);
+            font-family: 'Syne', sans-serif;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+ 
+        .btn-calcular:hover { background: #e6b800; transform: translateY(-1px); }
+        .btn-calcular:active { transform: scale(0.98); }
+        .btn-calcular:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+ 
+        .btn-loading { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+ 
+        .meter-tab {
+            padding: 16px;
+        }
+ 
+        .meter-display {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+ 
+        .meter-price-area {
+            padding: 28px 20px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(245,197,24,0.08) 0%, rgba(255,107,53,0.05) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+ 
+        .meter-price-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 8px;
+        }
+ 
+        .meter-price {
+            font-size: 56px;
+            font-weight: 800;
+            color: var(--accent);
+            letter-spacing: -2px;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+ 
+        .meter-price sup {
+            font-size: 24px;
+            letter-spacing: 0;
+            vertical-align: super;
+        }
+ 
+        .meter-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+ 
+        .meter-stat {
+            padding: 14px;
+            text-align: center;
+            border-right: 1px solid var(--border);
+        }
+ 
+        .meter-stat:last-child { border-right: none; }
+ 
+        .meter-stat-val {
+            font-size: 16px;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+            color: var(--text);
+        }
+ 
+        .meter-stat-label {
+            font-size: 10px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+ 
+        .gps-status-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+        }
+ 
+        .gps-status-bar .dot { color: var(--muted); }
+        .gps-status-bar.ok { color: var(--green); border-color: rgba(0,214,143,0.3); }
+        .gps-status-bar.ok .dot { color: var(--green); }
+        .gps-status-bar.err { color: var(--red); border-color: rgba(255,71,87,0.3); }
+ 
+        .meter-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+ 
+        .btn-start {
+            padding: 16px;
+            background: var(--green);
+            color: #0a0a0f;
+            border: none;
+            border-radius: var(--radius);
+            font-family: 'Syne', sans-serif;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+ 
+        .btn-start:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-start:active:not(:disabled) { transform: scale(0.97); }
+ 
+        .btn-stop {
+            padding: 16px;
+            background: var(--red);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-family: 'Syne', sans-serif;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+ 
+        .btn-stop:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-stop:active:not(:disabled) { transform: scale(0.97); }
+ 
+        .history-tab { padding: 16px; }
+ 
+        .history-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+ 
+        .history-empty div:first-child { font-size: 36px; margin-bottom: 10px; }
+ 
+        .ride-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 10px;
+            animation: fadeUp 0.3s ease;
+        }
+ 
+        .ride-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(245,197,24,0.04);
+        }
+ 
+        .ride-num {
+            font-size: 12px;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+            letter-spacing: 1px;
+        }
+ 
+        .ride-price {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+ 
+        .ride-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 4px 0;
+        }
+ 
+        .ride-detail {
+            padding: 10px 16px;
+            border-right: 1px solid var(--border);
+        }
+ 
+        .ride-detail:last-child { border-right: none; }
+        .ride-detail-label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+        .ride-detail-val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+ 
+        .ride-date {
+            padding: 8px 16px;
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            border-top: 1px solid var(--border);
+        }
+ 
+        .leaflet-container { background: #1a1a2e !important; }
+        .leaflet-tile { filter: brightness(0.7) saturate(0.8) hue-rotate(200deg); }
+        .leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; }
+ 
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10,10,15,0.85);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+ 
+        .loading-overlay.show { display: flex; }
+ 
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+ 
+        .loading-text {
+            font-size: 14px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+        }
+ 
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 12px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 9998;
+            transition: transform 0.3s ease;
+            white-space: nowrap;
+            max-width: 90vw;
+        }
+ 
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.success { border-color: var(--green); color: var(--green); }
+        .toast.error { border-color: var(--red); color: var(--red); }
+        .toast.info { border-color: var(--accent); color: var(--accent); }
+ 
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* EMBED BUTTON */
+        .btn-embed {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+        .btn-embed:hover { color: var(--accent); border-color: var(--accent); background: rgba(245,197,24,0.08); }
+
+        /* EMBED MODAL */
+        .embed-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10,10,15,0.88);
+            z-index: 10000;
+            align-items: flex-end;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .embed-overlay.show { display: flex; }
+
+        .embed-sheet {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 24px 24px 0 0;
+            width: 100%;
+            max-width: 640px;
+            padding: 24px 20px 32px;
+            animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .embed-handle {
+            width: 40px; height: 4px;
+            background: var(--border);
+            border-radius: 4px;
+            margin: 0 auto 20px;
+        }
+
+        .embed-title {
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .embed-subtitle {
+            font-size: 12px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 20px;
+        }
+
+        .embed-size-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .embed-size-field label {
+            display: block;
+            font-size: 10px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .embed-size-field-inner {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 12px;
+            gap: 6px;
+        }
+
+        .embed-size-field-inner input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            min-width: 0;
+        }
+
+        .embed-size-field-inner span {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+        }
+
+        .embed-presets {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .embed-preset {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .embed-preset:hover, .embed-preset.active {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: rgba(245,197,24,0.08);
+        }
+
+        .embed-code-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 8px;
+        }
+
+        .embed-code-box {
+            position: relative;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .embed-code-text {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--green);
+            line-height: 1.6;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+
+        .embed-copy-btn {
+            position: absolute;
+            top: 10px; right: 10px;
+            padding: 5px 10px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .embed-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .embed-copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+        .embed-note {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+            line-height: 1.5;
+            padding: 10px 14px;
+            background: rgba(245,197,24,0.04);
+            border: 1px solid rgba(245,197,24,0.12);
+            border-radius: 10px;
+            margin-bottom: 14px;
+        }
+
+        .embed-close-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-family: 'Syne', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .embed-close-btn:hover { color: var(--text); border-color: var(--text); }
+    </style>
+</head>
+<body>
+ 
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Calculando rota...</div>
+</div>
+ 
+<div class="toast" id="toast"></div>
+ 
+<div class="header">
+    <div class="logo">
+        <div class="logo-icon">🚕</div>
+        <div class="logo-text">Taxi<span>Metro</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:0">
+        <div class="status-pill" id="headerGps">
+            <div class="dot"></div>
+            GPS
+        </div>
+        <button class="btn-embed" onclick="openEmbed()">&lt;/&gt; Incorporar</button>
+    </div>
+</div>
+
+<!-- EMBED MODAL -->
+<div class="embed-overlay" id="embedOverlay" onclick="closeEmbedOutside(event)">
+    <div class="embed-sheet" id="embedSheet">
+        <div class="embed-handle"></div>
+        <div class="embed-title">Código de Incorporação</div>
+        <div class="embed-subtitle">Cole este código em qualquer página HTML</div>
+
+        <div class="embed-code-label" style="margin-bottom:8px">URL DO ARQUIVO HOSPEDADO</div>
+        <div class="embed-size-field-inner" style="margin-bottom:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 12px;">
+            <input type="text" id="embedSrc" value="" placeholder="https://seu-dominio.com/taximetro.html" oninput="updateEmbedCode()" style="flex:1;background:none;border:none;outline:none;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;font-weight:500;width:100%;min-width:0;">
+        </div>
+
+        <div class="embed-size-row">
+            <div class="embed-size-field">
+                <label>LARGURA</label>
+                <div class="embed-size-field-inner">
+                    <input type="text" id="embedW" value="100%" oninput="updateEmbedCode()">
+                    <span>px / %</span>
+                </div>
+            </div>
+            <div class="embed-size-field">
+                <label>ALTURA</label>
+                <div class="embed-size-field-inner">
+                    <input type="text" id="embedH" value="700" oninput="updateEmbedCode()">
+                    <span>px</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="embed-presets">
+            <span class="embed-preset active" onclick="setPreset('100%','700',this)">📱 Mobile</span>
+            <span class="embed-preset" onclick="setPreset('100%','800',this)">💻 Tablet</span>
+            <span class="embed-preset" onclick="setPreset('480','900',this)">🖥 Full</span>
+            <span class="embed-preset" onclick="setPreset('360','640',this)">🔲 Compacto</span>
+        </div>
+
+        <div class="embed-code-label">CÓDIGO HTML</div>
+        <div class="embed-code-box">
+            <pre class="embed-code-text" id="embedCodeText"></pre>
+            <button class="embed-copy-btn" id="embedCopyBtn" onclick="copyEmbed()">COPIAR</button>
+        </div>
+
+        <div class="embed-note">
+            ⚠ Para que o GPS funcione dentro do iframe, o site host precisa incluir o atributo allow="geolocation" — que já está incluso no código acima. O arquivo taximetro.html deve estar hospedado em HTTPS.
+        </div>
+
+        <button class="embed-close-btn" onclick="closeEmbed()">Fechar</button>
+    </div>
+</div>
+ 
+<div class="tabs-nav">
+    <button class="tab-nav-btn active" onclick="switchTab('rota', this)">🗺 Rota</button>
+    <button class="tab-nav-btn" onclick="switchTab('meter', this)">⏱ Taxímetro</button>
+    <button class="tab-nav-btn" onclick="switchTab('history', this)">📋 Histórico</button>
+</div>
+ 
+<!-- ROTA TAB -->
+<div class="tab-content active" id="tab-rota">
+    <div id="map"></div>
+    <div class="route-panel">
+ 
+        <div class="search-block">
+            <div class="search-row" style="position:relative">
+                <span class="search-icon">🟢</span>
+                <input class="search-input" id="inputOrigem" placeholder="Minha localização..." readonly>
+                <span class="origin-label">ORIGEM</span>
+            </div>
+            <div class="search-row" style="position:relative">
+                <span class="search-icon">🔴</span>
+                <input class="search-input" id="inputDestino" placeholder="Para onde?" autocomplete="off">
+                <div class="autocomplete-list" id="autocompleteList"></div>
+            </div>
+        </div>
+ 
+        <div class="route-info" id="routeInfo">
+            <div class="route-info-header">
+                <span>ESTIMATIVA DE CORRIDA</span>
+                <span id="routeEta" style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;"></span>
+            </div>
+            <div class="route-metrics">
+                <div class="route-metric">
+                    <div class="route-metric-val" id="routeDist">—</div>
+                    <div class="route-metric-label">DISTÂNCIA</div>
+                </div>
+                <div class="route-metric">
+                    <div class="route-metric-val" id="routeTime">—</div>
+                    <div class="route-metric-label">TEMPO EST.</div>
+                </div>
+                <div class="route-metric">
+                    <div class="route-metric-val price" id="routePrice">—</div>
+                    <div class="route-metric-label">TARIFA EST.</div>
+                </div>
+            </div>
+        </div>
+ 
+        <div class="tarifa-config">
+            <div class="tarifa-config-title">⚙ CONFIGURAR TARIFA</div>
+            <div class="tarifa-row">
+                <div class="tarifa-field">
+                    <label>BANDEIRADA</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="cfgMin" value="5.00" step="0.5" min="0" oninput="recalcRoute()">
+                    </div>
+                </div>
+                <div class="tarifa-field">
+                    <label>POR KM</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="cfgKm" value="2.50" step="0.1" min="0" oninput="recalcRoute()">
+                    </div>
+                </div>
+                <div class="tarifa-field">
+                    <label>POR MIN</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="cfgMin2" value="0.50" step="0.1" min="0" oninput="recalcRoute()">
+                    </div>
+                </div>
+            </div>
+        </div>
+ 
+        <button class="btn-calcular" id="btnCalcular" onclick="calcularRota()" disabled>
+            <span id="btnCalcIcon">🔍</span> Calcular Rota
+        </button>
+ 
+    </div>
+</div>
+ 
+<!-- METER TAB -->
+<div class="tab-content" id="tab-meter">
+    <div class="meter-tab">
+ 
+        <div class="gps-status-bar" id="meterGpsBar">
+            <div class="dot"></div>
+            <span id="meterGpsText">Aguardando GPS...</span>
+        </div>
+ 
+        <div class="meter-display">
+            <div class="meter-price-area">
+                <div class="meter-price-label">TARIFA EM ANDAMENTO</div>
+                <div class="meter-price"><sup>R$</sup><span id="mLivePrice">0,00</span></div>
+            </div>
+            <div class="meter-stats">
+                <div class="meter-stat">
+                    <div class="meter-stat-val" id="mDist">0,00</div>
+                    <div class="meter-stat-label">KM</div>
+                </div>
+                <div class="meter-stat">
+                    <div class="meter-stat-val" id="mTime">00:00</div>
+                    <div class="meter-stat-label">TEMPO</div>
+                </div>
+                <div class="meter-stat">
+                    <div class="meter-stat-val" id="mSpeed">0</div>
+                    <div class="meter-stat-label">KM/H</div>
+                </div>
+            </div>
+        </div>
+ 
+        <div class="tarifa-config" style="margin-bottom:14px">
+            <div class="tarifa-config-title">⚙ TARIFA DO TAXÍMETRO</div>
+            <div class="tarifa-row">
+                <div class="tarifa-field">
+                    <label>BANDEIRADA</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="mCfgMin" value="5.00" step="0.5" min="0">
+                    </div>
+                </div>
+                <div class="tarifa-field">
+                    <label>POR KM</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="mCfgKm" value="2.50" step="0.1" min="0">
+                    </div>
+                </div>
+                <div class="tarifa-field">
+                    <label>POR MIN</label>
+                    <div class="tarifa-field-inner">
+                        <span>R$</span>
+                        <input type="number" id="mCfgMin2" value="0.50" step="0.1" min="0">
+                    </div>
+                </div>
+            </div>
+        </div>
+ 
+        <div class="meter-btns">
+            <button class="btn-start" id="btnStart" onclick="startMeter()">▶ Iniciar</button>
+            <button class="btn-stop" id="btnStop" onclick="stopMeter()" disabled>⏹ Parar</button>
+        </div>
+ 
+    </div>
+</div>
+ 
+<!-- HISTORY TAB -->
+<div class="tab-content" id="tab-history">
+    <div class="history-tab">
+        <div id="historyContent">
+            <div class="history-empty">
+                <div>🧾</div>
+                <div>Nenhuma corrida ainda</div>
+            </div>
+        </div>
+    </div>
+</div>
+ 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const state = {
+    myLat: null, myLon: null,
+    destLat: null, destLon: null,
+    routeDistKm: null, routeTimeMins: null,
+    routeLayer: null,
+    map: null,
+    myMarker: null,
+    destMarker: null,
+    meterActive: false,
+    meterStart: null,
+    meterPrevPos: null,
+    meterDist: 0,
+    meterWatchId: null,
+    meterInterval: null,
+    history: JSON.parse(localStorage.getItem('txHistory') || '[]'),
+    autocompleteTimeout: null,
+};
+ 
+function initMap() {
+    state.map = L.map('map', { zoomControl: true, attributionControl: false })
+        .setView([-27.5954, -48.5480], 13);
+ 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+    }).addTo(state.map);
+ 
+    state.myIcon = L.divIcon({
+        html: '<div style="width:16px;height:16px;background:#00d68f;border:3px solid #0a0a0f;border-radius:50%;box-shadow:0 0 0 4px rgba(0,214,143,0.3)"></div>',
+        iconSize: [16,16], iconAnchor: [8,8], className: ''
+    });
+ 
+    state.destIcon = L.divIcon({
+        html: '<div style="width:16px;height:16px;background:#f5c518;border:3px solid #0a0a0f;border-radius:50%;box-shadow:0 0 0 4px rgba(245,197,24,0.3)"></div>',
+        iconSize: [16,16], iconAnchor: [8,8], className: ''
+    });
+}
+ 
+function startGPS() {
+    if (!navigator.geolocation) {
+        setGPSStatus('err', 'GPS não disponível');
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(onGPSSuccess, onGPSError, {
+        enableHighAccuracy: true, timeout: 10000, maximumAge: 30000
+    });
+}
+ 
+function onGPSSuccess(pos) {
+    state.myLat = pos.coords.latitude;
+    state.myLon = pos.coords.longitude;
+    const acc = Math.round(pos.coords.accuracy);
+ 
+    setGPSStatus('ok', `${state.myLat.toFixed(5)}, ${state.myLon.toFixed(5)} ±${acc}m`);
+    document.getElementById('inputOrigem').value = `${state.myLat.toFixed(4)}, ${state.myLon.toFixed(4)}`;
+ 
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${state.myLat}&lon=${state.myLon}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.display_name) {
+                const parts = d.display_name.split(',');
+                document.getElementById('inputOrigem').value = parts.slice(0,3).join(',').trim();
+            }
+        }).catch(() => {});
+ 
+    if (state.myMarker) state.myMarker.remove();
+    state.myMarker = L.marker([state.myLat, state.myLon], { icon: state.myIcon })
+        .addTo(state.map)
+        .bindPopup('📍 Você está aqui');
+ 
+    state.map.setView([state.myLat, state.myLon], 14);
+    checkBtnCalcular();
+}
+ 
+function onGPSError(err) {
+    let msg = 'Erro de GPS';
+    if (err.code === 1) msg = 'Permissão negada';
+    if (err.code === 2) msg = 'GPS indisponível';
+    if (err.code === 3) msg = 'Timeout GPS';
+    setGPSStatus('err', msg);
+}
+ 
+function setGPSStatus(type, msg) {
+    const pill = document.getElementById('headerGps');
+    const bar = document.getElementById('meterGpsBar');
+    const txt = document.getElementById('meterGpsText');
+ 
+    pill.className = 'status-pill ' + (type === 'ok' ? 'gps-ok' : 'gps-err');
+    pill.innerHTML = `<div class="dot"></div>${type === 'ok' ? 'GPS OK' : 'GPS ✕'}`;
+ 
+    bar.className = 'gps-status-bar ' + (type === 'ok' ? 'ok' : 'err');
+    txt.textContent = msg;
+}
+ 
+document.getElementById('inputDestino').addEventListener('input', function() {
+    clearTimeout(state.autocompleteTimeout);
+    const q = this.value.trim();
+    if (q.length < 3) { hideAutocomplete(); return; }
+    state.autocompleteTimeout = setTimeout(() => searchPlaces(q), 500);
+});
+ 
+document.getElementById('inputDestino').addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideAutocomplete();
+});
+ 
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-row')) hideAutocomplete();
+});
+ 
+async function searchPlaces(query) {
+    const viewbox = state.myLat
+        ? `&viewbox=${state.myLon-0.5},${state.myLat+0.5},${state.myLon+0.5},${state.myLat-0.5}&bounded=0`
+        : '';
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1&countrycodes=br${viewbox}`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+        const data = await res.json();
+        showAutocomplete(data);
+    } catch(e) {}
+}
+ 
+function showAutocomplete(results) {
+    const list = document.getElementById('autocompleteList');
+    if (!results.length) { hideAutocomplete(); return; }
+    list.innerHTML = results.map((r) => {
+        const parts = r.display_name.split(',');
+        const main = parts[0].trim();
+        const sub = parts.slice(1, 4).join(',').trim();
+        return `<div class="autocomplete-item" onclick="selectPlace(${r.lat}, ${r.lon}, '${escapeQuotes(r.display_name)}')">
+            <div class="place-main">${main}</div>
+            <div class="place-sub">${sub}</div>
+        </div>`;
+    }).join('');
+    list.classList.add('show');
+}
+ 
+function hideAutocomplete() {
+    document.getElementById('autocompleteList').classList.remove('show');
+}
+ 
+function escapeQuotes(str) {
+    return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+ 
+function selectPlace(lat, lon, name) {
+    state.destLat = parseFloat(lat);
+    state.destLon = parseFloat(lon);
+    const parts = name.split(',');
+    document.getElementById('inputDestino').value = parts.slice(0,3).join(',').trim();
+    hideAutocomplete();
+ 
+    if (state.destMarker) state.destMarker.remove();
+    state.destMarker = L.marker([state.destLat, state.destLon], { icon: state.destIcon })
+        .addTo(state.map)
+        .bindPopup('🔴 Destino');
+ 
+    if (state.myLat && state.destLat) {
+        const bounds = L.latLngBounds([state.myLat, state.myLon], [state.destLat, state.destLon]);
+        state.map.fitBounds(bounds, { padding: [40, 40] });
+    }
+ 
+    checkBtnCalcular();
+    calcularRota();
+}
+ 
+function checkBtnCalcular() {
+    document.getElementById('btnCalcular').disabled = !(state.myLat && state.destLat);
+}
+ 
+let lastRouteDist = null, lastRouteTime = null;
+ 
+async function calcularRota() {
+    if (!state.myLat || !state.destLat) {
+        showToast('Informe origem e destino', 'error');
+        return;
+    }
+    showLoading('Calculando rota...');
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${state.myLon},${state.myLat};${state.destLon},${state.destLat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+ 
+        if (data.code !== 'Ok' || !data.routes.length) {
+            showToast('Não foi possível calcular a rota', 'error');
+            hideLoading();
+            return;
+        }
+ 
+        const route = data.routes[0];
+        const distKm = route.distance / 1000;
+        const timeMins = route.duration / 60;
+ 
+        lastRouteDist = distKm;
+        lastRouteTime = timeMins;
+ 
+        if (state.routeLayer) state.routeLayer.remove();
+        state.routeLayer = L.geoJSON(route.geometry, {
+            style: { color: '#f5c518', weight: 4, opacity: 0.85 }
+        }).addTo(state.map);
+ 
+        const bounds = L.latLngBounds([state.myLat, state.myLon], [state.destLat, state.destLon]);
+        state.map.fitBounds(bounds, { padding: [50, 50] });
+ 
+        updateRouteInfo(distKm, timeMins);
+        hideLoading();
+        showToast('Rota calculada!', 'success');
+    } catch(e) {
+        hideLoading();
+        showToast('Erro ao calcular rota. Verifique sua conexão.', 'error');
+    }
+}
+ 
+function updateRouteInfo(distKm, timeMins) {
+    const minBand = parseFloat(document.getElementById('cfgMin').value) || 5;
+    const perKm   = parseFloat(document.getElementById('cfgKm').value)  || 2.5;
+    const perMin  = parseFloat(document.getElementById('cfgMin2').value) || 0.5;
+    const calc = (distKm * perKm) + (timeMins * perMin);
+    const price = Math.max(calc, minBand);
+    const distStr = distKm >= 1 ? distKm.toFixed(1) + ' km' : Math.round(distKm * 1000) + ' m';
+    const h = Math.floor(timeMins / 60);
+    const m = Math.round(timeMins % 60);
+    const timeStr = h > 0 ? `${h}h ${m}min` : `${m} min`;
+    const priceStr = 'R$ ' + price.toFixed(2).replace('.', ',');
+    document.getElementById('routeDist').textContent = distStr;
+    document.getElementById('routeTime').textContent = timeStr;
+    document.getElementById('routePrice').textContent = priceStr;
+    document.getElementById('routeEta').textContent = 'estimativa';
+    document.getElementById('routeInfo').classList.add('show');
+}
+ 
+function recalcRoute() {
+    if (lastRouteDist !== null) updateRouteInfo(lastRouteDist, lastRouteTime);
+}
+ 
+function startMeter() {
+    if (!navigator.geolocation) { showToast('GPS não disponível', 'error'); return; }
+    state.meterActive = true;
+    state.meterStart = Date.now();
+    state.meterPrevPos = null;
+    state.meterDist = 0;
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
+    document.getElementById('mLivePrice').textContent = '0,00';
+    document.getElementById('mDist').textContent = '0,00';
+    document.getElementById('mTime').textContent = '00:00';
+    document.getElementById('mSpeed').textContent = '0';
+    state.meterWatchId = navigator.geolocation.watchPosition(
+        onMeterPos, onGPSError,
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+    state.meterInterval = setInterval(tickMeter, 1000);
+    showToast('Corrida iniciada!', 'success');
+}
+ 
+function stopMeter() {
+    state.meterActive = false;
+    if (state.meterWatchId !== null) navigator.geolocation.clearWatch(state.meterWatchId);
+    if (state.meterInterval) clearInterval(state.meterInterval);
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled = true;
+    if (state.meterDist > 0.01) {
+        const durSecs = (Date.now() - state.meterStart) / 1000;
+        const mins = durSecs / 60;
+        const price = calcPrice(state.meterDist, mins);
+        state.history.unshift({
+            dist: state.meterDist,
+            mins: Math.round(mins),
+            price,
+            date: new Date().toLocaleString('pt-BR')
+        });
+        localStorage.setItem('txHistory', JSON.stringify(state.history));
+        renderHistory();
+        showToast(`Corrida finalizada — R$ ${price.toFixed(2).replace('.', ',')}`, 'info');
+    }
+}
+ 
+function onMeterPos(pos) {
+    const { latitude: lat, longitude: lon, speed } = pos.coords;
+    state.myLat = lat; state.myLon = lon;
+    setGPSStatus('ok', `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    if (state.meterPrevPos) {
+        const d = haversine(state.meterPrevPos, { lat, lon });
+        if (d > 0.0001) state.meterDist += d;
+    }
+    state.meterPrevPos = { lat, lon };
+    const kmh = speed ? Math.round(speed * 3.6) : 0;
+    document.getElementById('mSpeed').textContent = kmh;
+    document.getElementById('mDist').textContent = state.meterDist.toFixed(2);
+}
+ 
+function tickMeter() {
+    if (!state.meterActive) return;
+    const secs = (Date.now() - state.meterStart) / 1000;
+    const mins = Math.floor(secs / 60);
+    const ss = Math.floor(secs % 60);
+    document.getElementById('mTime').textContent =
+        String(mins).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+    const price = calcPrice(state.meterDist, secs / 60);
+    document.getElementById('mLivePrice').textContent = price.toFixed(2).replace('.', ',');
+}
+ 
+function calcPrice(km, mins) {
+    const band = parseFloat(document.getElementById('mCfgMin').value) || 5;
+    const perKm = parseFloat(document.getElementById('mCfgKm').value) || 2.5;
+    const perMin = parseFloat(document.getElementById('mCfgMin2').value) || 0.5;
+    return Math.max((km * perKm) + (mins * perMin), band);
+}
+ 
+function haversine(p1, p2) {
+    const R = 6371;
+    const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+    const dLon = (p2.lon - p1.lon) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+        Math.cos(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+ 
+function renderHistory() {
+    const el = document.getElementById('historyContent');
+    if (!state.history.length) {
+        el.innerHTML = '<div class="history-empty"><div>🧾</div><div>Nenhuma corrida ainda</div></div>';
+        return;
+    }
+    el.innerHTML = state.history.map((r, i) => `
+        <div class="ride-card">
+            <div class="ride-card-header">
+                <span class="ride-num">CORRIDA #${state.history.length - i}</span>
+                <span class="ride-price">R$ ${r.price.toFixed(2).replace('.',',')}</span>
+            </div>
+            <div class="ride-details">
+                <div class="ride-detail">
+                    <div class="ride-detail-label">DISTÂNCIA</div>
+                    <div class="ride-detail-val">${r.dist.toFixed(2)} km</div>
+                </div>
+                <div class="ride-detail">
+                    <div class="ride-detail-label">DURAÇÃO</div>
+                    <div class="ride-detail-val">${r.mins} min</div>
+                </div>
+            </div>
+            <div class="ride-date">${r.date}</div>
+        </div>
+    `).join('');
+}
+ 
+function switchTab(id, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+    if (id === 'rota') setTimeout(() => state.map.invalidateSize(), 100);
+    if (id === 'history') renderHistory();
+}
+ 
+let toastTimer;
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+ 
+function showLoading(msg = 'Aguarde...') {
+    document.getElementById('loadingText').textContent = msg;
+    document.getElementById('loadingOverlay').classList.add('show');
+}
+ 
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('show');
+}
+ 
+// ─── EMBED ────────────────────────────────────────────────────────────────────
+function openEmbed() {
+    document.getElementById('embedOverlay').classList.add('show');
+    updateEmbedCode();
+}
+
+function closeEmbed() {
+    document.getElementById('embedOverlay').classList.remove('show');
+}
+
+function closeEmbedOutside(e) {
+    if (e.target === document.getElementById('embedOverlay')) closeEmbed();
+}
+
+function setPreset(w, h, btn) {
+    document.getElementById('embedW').value = w;
+    document.getElementById('embedH').value = h;
+    document.querySelectorAll('.embed-preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateEmbedCode();
+}
+
+function updateEmbedCode() {
+    const w = document.getElementById('embedW').value || '100%';
+    const h = document.getElementById('embedH').value || '700';
+    const srcInput = document.getElementById('embedSrc');
+    const src = (srcInput && srcInput.value.trim()) ? srcInput.value.trim() : 'https://seu-dominio.com/taximetro.html';
+    const wAttr = isNaN(w) ? w : w + 'px';
+    const hAttr = isNaN(h) ? h : h + 'px';
+    const code = `<iframe\n  src="${src}"\n  width="${wAttr}"\n  height="${hAttr}"\n  style="border:none;border-radius:16px;overflow:hidden;"\n  allow="geolocation"\n  loading="lazy"\n  title="TaxiMetro GPS">\n</iframe>`;
+    document.getElementById('embedCodeText').textContent = code;
+}
+
+function copyEmbed() {
+    const code = document.getElementById('embedCodeText').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        const btn = document.getElementById('embedCopyBtn');
+        btn.textContent = 'COPIADO ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'COPIAR'; btn.classList.remove('copied'); }, 2000);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const btn = document.getElementById('embedCopyBtn');
+        btn.textContent = 'COPIADO ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'COPIAR'; btn.classList.remove('copied'); }, 2000);
+    });
+}
+
+
+initMap();
+startGPS();
+renderHistory();
+</script>
+</body>
+</html>
